@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smooth - Creator Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap');
+      
+      body {
+        transition: background-color 0.5s ease, color 0.5s ease;
+      }
+      
+      /* Theme Definitions */
+      [data-theme='light'] {
+        --bg-primary: #F8FAFC;
+        --bg-panel: rgba(255, 255, 255, 0.7);
+        --text-primary: #1e293b;
+        --gradient-start: #EEF2FF;
+        --gradient-mid: #F5F3FF;
+        --gradient-end: #FDF2F8;
+      }
+
+      [data-theme='dark'] {
+        --bg-primary: #0f172a;
+        --bg-panel: rgba(30, 41, 59, 0.7);
+        --text-primary: #f8fafc;
+        --gradient-start: #0f172a;
+        --gradient-mid: #1e1b4b;
+        --gradient-end: #312e81;
+      }
+
+      [data-theme='ocean'] {
+        --bg-primary: #ecfeff;
+        --bg-panel: rgba(255, 255, 255, 0.6);
+        --text-primary: #164e63;
+        --gradient-start: #ecfeff;
+        --gradient-mid: #cffafe;
+        --gradient-end: #e0f2fe;
+      }
+
+      .smooth-gradient {
+        background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-mid) 50%, var(--gradient-end) 100%);
+      }
+
+      .glass-panel {
+        background: var(--bg-panel);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #CBD5E1;
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #94A3B8;
+      }
+
+      /* Font handling */
+      body[dir="ltr"] { font-family: 'Outfit', sans-serif; }
+      body[dir="rtl"] { font-family: 'Cairo', sans-serif; }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.0"
+  }
+}
+</script>
+</head>
+  <body class="bg-slate-50 text-slate-900 smooth-gradient min-h-screen transition-colors duration-500">
+    <div id="root"></div>
+  </body>
+</html>
