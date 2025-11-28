@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import Dashboard from './components/Dashboard';
 import CourseEditor from './components/CourseEditor';
@@ -65,19 +66,48 @@ const App: React.FC = () => {
     document.body.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
   }, [theme, lang]);
 
-  // Splash Screen Timer
+  // Session Persistence (Cookies) Check
   useEffect(() => {
-    if (viewState === 'LANDING') {
+    const savedSession = localStorage.getItem('smooth_session');
+    let sessionFound = false;
+
+    if (savedSession) {
+      try {
+        const sessionData = JSON.parse(savedSession);
+        if (sessionData && sessionData.role) {
+          setUserRole(sessionData.role);
+          setViewState('DASHBOARD');
+          sessionFound = true;
+        }
+      } catch (e) {
+        localStorage.removeItem('smooth_session');
+      }
+    }
+    
+    // Only show Splash sequence if no session found
+    if (!sessionFound) {
         const timer = setTimeout(() => {
-            setViewState('LOGIN'); // Go to Login instead of Dashboard
-        }, 2500); // 2.5s Splash
+            setViewState('LOGIN'); 
+        }, 2500); 
         return () => clearTimeout(timer);
     }
-  }, [viewState]);
+  }, []);
 
   const handleLogin = (role: UserRole) => {
+    // Save "Cookie"
+    localStorage.setItem('smooth_session', JSON.stringify({
+      role,
+      token: 'mock-token-' + Date.now(),
+      loginTime: new Date().toISOString()
+    }));
+    
     setUserRole(role);
     setViewState('DASHBOARD');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('smooth_session');
+    setViewState('LOGIN');
   };
 
   const handleCreateCourse = () => {
@@ -224,7 +254,7 @@ const App: React.FC = () => {
                 </div>
             )}
             <button 
-                onClick={() => setViewState('LOGIN')}
+                onClick={handleLogout}
                 className="w-full flex items-center justify-center lg:justify-start lg:px-6 py-4 rounded-2xl hover:bg-red-50 text-red-400 hover:text-red-500 transition-all dark:hover:bg-red-900/20"
             >
                 <LogOut size={22} strokeWidth={2} />
@@ -238,7 +268,6 @@ const App: React.FC = () => {
       <main className={`flex-1 flex flex-col h-screen overflow-hidden py-4 ${isRTL ? 'pl-4 pr-0' : 'pr-4 pl-0'}`}>
         <div className="glass-panel rounded-3xl h-full flex flex-col shadow-xl shadow-indigo-100/50 dark:shadow-none overflow-hidden relative">
             {/* Top Header */}
-            {viewState !== 'LANDING' && viewState !== 'LOGIN' && (
             <header className="h-24 flex items-center justify-between px-10 flex-shrink-0">
                 <div>
                     <h1 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-800'}`}>
@@ -268,7 +297,6 @@ const App: React.FC = () => {
                 </div>
                 </div>
             </header>
-            )}
 
             {/* View Router */}
             <div className="flex-1 overflow-auto">

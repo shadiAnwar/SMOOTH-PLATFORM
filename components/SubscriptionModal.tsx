@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
 import { PlanInterval, PAYMENT_METHODS, Language } from '../types';
-import { Check, X, CreditCard, ArrowLeft, Lock, ChevronRight, Copy, Sparkles } from 'lucide-react';
+import { Check, X, CreditCard, ArrowLeft, Lock, ChevronRight, Copy, Sparkles, AlertCircle } from 'lucide-react';
 import { InstapayIcon, FawryIcon, VodafoneCashIcon, OrangeCashIcon } from './Icons';
 
 interface SubscriptionModalProps {
@@ -40,7 +41,7 @@ const translations = {
     cardName: "Cardholder Name",
     scanSend: "Scan or send to:",
     sendExactly: "Send exactly",
-    enterAddress: "Enter your Address / Phone",
+    enterAddress: "Enter your Address (IPA) or Phone",
     verifyNote: "We need this to verify your transaction.",
     fawryRef: "Fawry Reference Number",
     payAtStore: "Pay at any Fawry terminal within",
@@ -55,10 +56,20 @@ const translations = {
     ],
     vodafoneTitle: "Vodafone Cash Transfer",
     orangeTitle: "Orange Cash Transfer",
-    walletNumber: "Wallet Number",
+    walletNumber: "Your Wallet Number",
     processing: "Processing Payment...",
+    connecting: "Connecting to",
     pay: "Pay",
-    checkStatus: "I Have Paid / Check Status"
+    checkStatus: "I Have Paid / Check Status",
+    errors: {
+      invalidCard: "Invalid card number. Must be 16 digits.",
+      invalidExpiry: "Invalid expiry date (MM/YY).",
+      invalidCvc: "Invalid CVC (3 digits).",
+      invalidName: "Cardholder name is required.",
+      invalidPhone: "Invalid phone number. Use format 01xxxxxxxxx.",
+      invalidInstapay: "Invalid Instapay address or phone number.",
+      generic: "Please check all fields."
+    }
   },
   ar: {
     becomePro: "اشترك في سموث برو",
@@ -86,7 +97,7 @@ const translations = {
     cardName: "اسم حامل البطاقة",
     scanSend: "امسح أو أرسل إلى:",
     sendExactly: "أرسل بالضبط",
-    enterAddress: "أدخل عنوانك / هاتفك",
+    enterAddress: "أدخل عنوان الدفع أو الهاتف",
     verifyNote: "نحتاج هذا للتحقق من معاملتك.",
     fawryRef: "رقم مرجع فوري",
     payAtStore: "ادفع في أي ماكينة فوري خلال",
@@ -101,10 +112,20 @@ const translations = {
     ],
     vodafoneTitle: "تحويل فودافون كاش",
     orangeTitle: "تحويل أورنج كاش",
-    walletNumber: "رقم المحفظة",
+    walletNumber: "رقم محفظتك",
     processing: "جاري المعالجة...",
+    connecting: "جاري الاتصال بـ",
     pay: "ادفع",
-    checkStatus: "تم الدفع / تحقق من الحالة"
+    checkStatus: "تم الدفع / تحقق من الحالة",
+    errors: {
+      invalidCard: "رقم البطاقة غير صحيح. يجب أن يكون 16 رقم.",
+      invalidExpiry: "تاريخ الانتهاء غير صحيح (MM/YY).",
+      invalidCvc: "رمز الأمان غير صحيح (3 أرقام).",
+      invalidName: "اسم حامل البطاقة مطلوب.",
+      invalidPhone: "رقم الهاتف غير صحيح. استخدم الصيغة 01xxxxxxxxx.",
+      invalidInstapay: "عنوان انستا باي أو رقم الهاتف غير صحيح.",
+      generic: "يرجى التحقق من جميع الحقول."
+    }
   }
 };
 
@@ -116,32 +137,93 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
   const [selectedInterval, setSelectedInterval] = useState<PlanInterval>('MONTHLY');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CARD');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+
+  // Form States
   const [cardNumber, setCardNumber] = useState('');
+  const [expiry, setExpiry] = useState('');
+  const [cvc, setCvc] = useState('');
+  const [cardName, setCardName] = useState('');
   const [mobileNumber, setMobileNumber] = useState('');
+  const [instapayAddress, setInstapayAddress] = useState('');
 
   if (!isOpen) return null;
 
   const handleClose = () => {
     setStep('PLAN_SELECTION');
     setIsProcessing(false);
+    setErrorMessage('');
     onClose();
   };
 
+  const validatePayment = (): boolean => {
+    setErrorMessage('');
+    
+    if (paymentMethod === 'CARD') {
+        const cleanNum = cardNumber.replace(/\s/g, '');
+        if (!/^\d{16}$/.test(cleanNum)) {
+            setErrorMessage(t.errors.invalidCard);
+            return false;
+        }
+        if (!/^\d{2}\/\d{2}$/.test(expiry)) {
+            setErrorMessage(t.errors.invalidExpiry);
+            return false;
+        }
+        if (!/^\d{3,4}$/.test(cvc)) {
+            setErrorMessage(t.errors.invalidCvc);
+            return false;
+        }
+        if (cardName.trim().length < 3) {
+            setErrorMessage(t.errors.invalidName);
+            return false;
+        }
+    } else if (paymentMethod === 'VODAFONE_CASH' || paymentMethod === 'ORANGE_CASH') {
+        if (!/^01[0125][0-9]{8}$/.test(mobileNumber)) {
+            setErrorMessage(t.errors.invalidPhone);
+            return false;
+        }
+    } else if (paymentMethod === 'INSTAPAY') {
+        // Simple check for IPA (contains @) or phone number
+        const isPhone = /^01[0125][0-9]{8}$/.test(instapayAddress);
+        const isIPA = /^[a-zA-Z0-9._]+@[a-zA-Z]+$/.test(instapayAddress);
+        if (!isPhone && !isIPA) {
+            setErrorMessage(t.errors.invalidInstapay);
+            return false;
+        }
+    }
+    return true;
+  };
+
   const handlePayment = () => {
+    if (!validatePayment()) return;
+
     setIsProcessing(true);
-    // Simulate API delay
+    let providerName = "";
+    if (paymentMethod === 'CARD') providerName = "Bank Gateway";
+    if (paymentMethod === 'INSTAPAY') providerName = "Instapay Network";
+    if (paymentMethod === 'FAWRY') providerName = "Fawry Pay";
+    if (paymentMethod === 'VODAFONE_CASH') providerName = "Vodafone Cash";
+    if (paymentMethod === 'ORANGE_CASH') providerName = "Orange Cash";
+
+    setConnectionStatus(`${t.connecting} ${providerName}...`);
+
+    // Simulate Network Connection & Processing
     setTimeout(() => {
-        setIsProcessing(false);
-        onSubscribe(selectedInterval);
-        setStep('PLAN_SELECTION'); 
-    }, 2000);
+        setConnectionStatus("Verifying transaction...");
+        setTimeout(() => {
+            setIsProcessing(false);
+            onSubscribe(selectedInterval);
+            setStep('PLAN_SELECTION'); 
+        }, 1500);
+    }, 1500);
   };
 
   const amount = selectedInterval === 'MONTHLY' ? 100 : 1000;
 
   const PaymentOption = ({ method, icon: Icon, label, colorClass }: any) => (
     <label className={`flex items-center gap-4 p-4 rounded-2xl border cursor-pointer transition-all ${paymentMethod === method ? 'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600' : 'border-slate-100 hover:bg-slate-50'}`}>
-        <input type="radio" name="pay" checked={paymentMethod === method} onChange={() => setPaymentMethod(method)} className="accent-indigo-600 w-4 h-4" />
+        <input type="radio" name="pay" checked={paymentMethod === method} onChange={() => { setPaymentMethod(method); setErrorMessage(''); }} className="accent-indigo-600 w-4 h-4" />
         <div className={`bg-white p-2 rounded-lg border border-slate-100 shadow-sm ${colorClass}`}><Icon className="w-6 h-6" /></div>
         <span className="font-bold text-slate-700">{label}</span>
     </label>
@@ -238,6 +320,13 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
                          </div>
                     </div>
 
+                    {errorMessage && (
+                        <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 text-red-600 animate-pulse">
+                            <AlertCircle size={20} className="shrink-0 mt-0.5" />
+                            <p className="text-sm font-bold">{errorMessage}</p>
+                        </div>
+                    )}
+
                     {/* CARD INTERFACE */}
                     {paymentMethod === 'CARD' && (
                         <div className="space-y-5">
@@ -250,26 +339,50 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
                                         placeholder="0000 0000 0000 0000" 
                                         className={`w-full ${isRTL ? 'pr-12 pl-4' : 'pl-12 pr-4'} py-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono text-slate-700`}
                                         value={cardNumber}
-                                        onChange={(e) => setCardNumber(e.target.value)}
+                                        maxLength={16}
+                                        onChange={(e) => {
+                                            const val = e.target.value.replace(/\D/g, '');
+                                            setCardNumber(val);
+                                        }}
                                     />
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-5">
                                 <div className="space-y-2">
                                     <label className="text-sm font-bold text-slate-700 ml-1">{t.expiryDate}</label>
-                                    <input type="text" placeholder="MM/YY" className="w-full px-4 py-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-center" />
+                                    <input 
+                                        type="text" 
+                                        placeholder="MM/YY" 
+                                        className="w-full px-4 py-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-center"
+                                        maxLength={5}
+                                        value={expiry}
+                                        onChange={(e) => setExpiry(e.target.value)}
+                                    />
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-sm font-bold text-slate-700 ml-1">CVC</label>
                                     <div className="relative">
                                         <Lock className={`absolute ${isRTL ? 'right-4' : 'left-4'} top-1/2 -translate-y-1/2 text-slate-400`} size={18} />
-                                        <input type="text" placeholder="123" className={`w-full ${isRTL ? 'pr-11 pl-4' : 'pl-11 pr-4'} py-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent`} />
+                                        <input 
+                                            type="text" 
+                                            placeholder="123" 
+                                            maxLength={4}
+                                            value={cvc}
+                                            onChange={(e) => setCvc(e.target.value.replace(/\D/g, ''))}
+                                            className={`w-full ${isRTL ? 'pr-11 pl-4' : 'pl-11 pr-4'} py-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent`} 
+                                        />
                                     </div>
                                 </div>
                             </div>
                             <div className="space-y-2">
                                 <label className="text-sm font-bold text-slate-700 ml-1">{t.cardName}</label>
-                                <input type="text" placeholder="John Doe" className="w-full px-4 py-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+                                <input 
+                                    type="text" 
+                                    placeholder="John Doe" 
+                                    value={cardName}
+                                    onChange={(e) => setCardName(e.target.value)}
+                                    className="w-full px-4 py-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent" 
+                                />
                             </div>
                         </div>
                     )}
@@ -283,7 +396,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
                                 </div>
                                 <p className="text-sm text-purple-900 font-bold mb-2">{t.scanSend}</p>
                                 <div className="flex items-center gap-3 bg-white px-5 py-3 rounded-xl border border-purple-100 mb-3 shadow-sm">
-                                    <span className="font-mono text-lg font-bold text-purple-700 tracking-wide">username@instapay</span>
+                                    <span className="font-mono text-lg font-bold text-purple-700 tracking-wide">01212627052</span>
                                     <button className="text-slate-300 hover:text-indigo-600 transition-colors"><Copy size={16} /></button>
                                 </div>
                                 <p className="text-xs font-medium text-purple-600 bg-purple-100/50 px-3 py-1 rounded-full">{t.sendExactly} ${amount} USD</p>
@@ -293,10 +406,10 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
                                 <label className="text-sm font-bold text-slate-700 ml-1">{t.enterAddress}</label>
                                 <input 
                                     type="text" 
-                                    placeholder="e.g. 010xxxxxxxx" 
+                                    placeholder="e.g. name@instapay or 010xxxxxxxx" 
                                     className="w-full px-5 py-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                    value={mobileNumber}
-                                    onChange={(e) => setMobileNumber(e.target.value)}
+                                    value={instapayAddress}
+                                    onChange={(e) => setInstapayAddress(e.target.value)}
                                 />
                                 <p className="text-xs text-slate-500 ml-1">{t.verifyNote}</p>
                             </div>
@@ -353,6 +466,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
                                     className="w-full px-5 py-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                                     value={mobileNumber}
                                     onChange={(e) => setMobileNumber(e.target.value)}
+                                    maxLength={11}
                                 />
                                 <p className="text-xs text-slate-500 ml-1">{t.verifyNote}</p>
                             </div>
@@ -373,7 +487,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
                     {isProcessing ? (
                         <>
                             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            {t.processing}
+                            {connectionStatus || t.processing}
                         </>
                     ) : (
                         <>
